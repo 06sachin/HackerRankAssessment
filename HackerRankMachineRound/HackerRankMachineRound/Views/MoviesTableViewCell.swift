@@ -22,7 +22,7 @@ final class MoviesTableViewCell: UITableViewCell {
     func configure(with movie: MoviesData) {
         titleLabel.text = movie.title
         yearLabel.text = "Year: \(movie.year ?? "")"
-        languageLabel.text = "Language: \(movie.language ?? "")"
+        languageLabel.text = movie.language
         if let posterURLString = movie.poster,
            let posterURL = URL(string: posterURLString) {
             // Load image asynchronously
