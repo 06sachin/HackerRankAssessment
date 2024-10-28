@@ -8,23 +8,18 @@
 import UIKit
 
 final class MovieListViewController: UIViewController {
-    
-    // MARK: - Outlets TableView -
     @IBOutlet weak var movieListTableView: UITableView!
 
-    // MARK: - Properties -
     private let viewModel = MoviesViewModel()
     private var filteredMovies: [MoviesData] = []  // Stores search results
     private var isSearching = false  // Track if search is active
-    
+    private var selectedCategory: SectionType?
+    private var selectedValue: String?
+
     // MARK: - Life Cycle -
     override func viewDidLoad() {
         super.viewDidLoad()
         setupTableView()
-    }
-    
-    deinit {
-        print("Dealloc called")
     }
 }
 
@@ -32,7 +27,7 @@ final class MovieListViewController: UIViewController {
 extension MovieListViewController {
     fileprivate func setupTableView() {
         movieListTableView.register(UINib(nibName: String(describing: AllMoviesTableViewCell.self), bundle: nil), forCellReuseIdentifier: String(describing: AllMoviesTableViewCell.self))
-        movieListTableView.register(UINib(nibName: String(describing: MoviesTableViewCell.self) , bundle: nil), forCellReuseIdentifier:String(describing:MoviesTableViewCell.self))
+        movieListTableView.register(UINib(nibName: String(describing: MoviesTableViewCell.self), bundle: nil), forCellReuseIdentifier:String(describing: MoviesTableViewCell.self))
         movieListTableView.register(CustomSectionHeaderView.self, forHeaderFooterViewReuseIdentifier: CustomSectionHeaderView.identifier)
         movieListTableView.dataSource = self
         movieListTableView.delegate = self
@@ -40,13 +35,15 @@ extension MovieListViewController {
     
     @objc func handleSectionTap(_ sender: UITapGestureRecognizer) {
         guard let section = sender.view?.tag, let sectionType = SectionType(rawValue: section) else { return }
-        viewModel.toggleSection(sectionType)  /// Toggle expand/collapse state
+        viewModel.toggleSection(sectionType)
         movieListTableView.reloadSections(IndexSet(integer: section), with: .automatic)
     }
 }
 
 // MARK: - UITableViewDelegate, UITableViewDataSource -
 extension MovieListViewController: UITableViewDelegate, UITableViewDataSource {
+
+    // MARK: - Table View Sections and Rows
     func numberOfSections(in tableView: UITableView) -> Int {
         return isSearching ? 1 : SectionType.allCases.count
     }
@@ -56,64 +53,78 @@ extension MovieListViewController: UITableViewDelegate, UITableViewDataSource {
             return filteredMovies.count
         } else {
             let sectionType = SectionType(rawValue: section)!
-            if sectionType == .allMovies {
-                return viewModel.isSectionExpanded(sectionType) ? viewModel.numberOfMovies() : 0
-            }
             return viewModel.isSectionExpanded(sectionType) ? viewModel.itemsInSection(sectionType).count : 0
         }
     }
     
+    // MARK: - Cell Configuration
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let sectionType = SectionType(rawValue: indexPath.section)!
+
         if isSearching {
-            guard let cell = tableView.dequeueReusableCell(withIdentifier: String(describing: MoviesTableViewCell.self) , for: indexPath) as? MoviesTableViewCell else {
-                return UITableViewCell()
+            let cell = tableView.dequeueReusableCell(withIdentifier: String(describing: MoviesTableViewCell.self), for: indexPath) as! MoviesTableViewCell
+            cell.configure(with: filteredMovies[indexPath.row])
+            return cell
+        }
+
+        // Handle `allMovies` section separately since it uses `MoviesData` directly
+        if sectionType == .allMovies {
+            let cell = tableView.dequeueReusableCell(withIdentifier: String(describing: MoviesTableViewCell.self), for: indexPath) as! MoviesTableViewCell
+            if let movie = viewModel.itemsInSection(.allMovies)[indexPath.row] as? MoviesData {
+                cell.configure(with: movie)
             }
-            let movie = filteredMovies[indexPath.row]
-            cell.selectionStyle = .none
-            cell.configure(with: movie)
             return cell
         } else {
-            let sectionType = SectionType(rawValue: indexPath.section)!
-            
-            if sectionType == .allMovies {
-                guard let cell = tableView.dequeueReusableCell(withIdentifier: String(describing: MoviesTableViewCell.self) , for: indexPath) as? MoviesTableViewCell else { return UITableViewCell() }
-                let movie = viewModel.movies[indexPath.row]
-                cell.configure(with: movie)
-                cell.selectionStyle = .none
-                return cell
-            } else {
-                guard let cell = tableView.dequeueReusableCell(withIdentifier: String(describing: AllMoviesTableViewCell.self), for: indexPath) as? AllMoviesTableViewCell else { return UITableViewCell() }
-                cell.titleLabel?.text = viewModel.itemsInSection(sectionType)[indexPath.row]
-                cell.selectionStyle = .none
-                return cell
+            // Handle other sections (e.g., Genre, Year) as strings
+            let cell = tableView.dequeueReusableCell(withIdentifier: String(describing: AllMoviesTableViewCell.self), for: indexPath) as! AllMoviesTableViewCell
+            if let value = viewModel.itemsInSection(sectionType)[indexPath.row] as? String {
+                cell.titleLabel?.text = value
             }
+            return cell
         }
     }
-    
+
+    // MARK: - Cell Selection Handling
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        guard let movieDetailVC = UIStoryboard.init(name: "Main", bundle: Bundle.main).instantiateViewController(withIdentifier: String(describing: MovieDetailViewController.self)) as? MovieDetailViewController else { return }
+        guard let movieDetailVC = UIStoryboard(name: "Main", bundle: .main)
+                .instantiateViewController(withIdentifier: String(describing: MovieDetailViewController.self)) as? MovieDetailViewController else {
+            return
+        }
+        
         if isSearching {
             movieDetailVC.movie = filteredMovies[indexPath.row]
         } else {
             let sectionType = SectionType(rawValue: indexPath.section)!
+            
             if sectionType == .allMovies {
-                movieDetailVC.movie = viewModel.movies[indexPath.row]
+                if let movie = viewModel.itemsInSection(.allMovies)[indexPath.row] as? MoviesData {
+                    movieDetailVC.movie = movie
+                }
+            } else {
+                if let selectedValue = viewModel.itemsInSection(sectionType)[indexPath.row] as? String {
+                    let moviesForSelectedValue = viewModel.movies(for: sectionType, with: selectedValue)
+                    
+                    if let firstMovie = moviesForSelectedValue.first {
+                        movieDetailVC.movie = firstMovie
+                    }
+                }
             }
         }
         navigationController?.pushViewController(movieDetailVC, animated: true)
     }
 
+    // MARK: - Section Header for Expand/Collapse -
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        guard let headerView = tableView.dequeueReusableHeaderFooterView(withIdentifier: CustomSectionHeaderView.identifier) as? CustomSectionHeaderView else {
+        guard !isSearching,
+              let headerView = tableView.dequeueReusableHeaderFooterView(withIdentifier: CustomSectionHeaderView.identifier) as? CustomSectionHeaderView else {
             return nil
         }
 
-        // Set title and arrow direction based on section state
-        headerView.titleLabel.text = SectionType(rawValue: section)?.title
-        let isExpanded = viewModel.isSectionExpanded(SectionType(rawValue: section) ?? .year) // Your method to check if section is expanded
+        let sectionType = SectionType(rawValue: section)!
+        headerView.titleLabel.text = sectionType.title
+        let isExpanded = viewModel.isSectionExpanded(sectionType)
         headerView.setArrowDirection(isExpanded: isExpanded)
         
-        // Add tap gesture recognizer to header view
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleSectionTap(_:)))
         headerView.addGestureRecognizer(tapGesture)
         headerView.tag = section
