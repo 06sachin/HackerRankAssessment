@@ -7,7 +7,13 @@
 
 import UIKit
 
+protocol ConfigurableCell {
+    func configure(with data: Any)
+}
+
 final class MovieListViewController: UIViewController {
+    
+    // MARK: - Outlets -
     @IBOutlet weak var movieListTableView: UITableView!
 
     private let viewModel = MoviesViewModel()
@@ -60,28 +66,30 @@ extension MovieListViewController: UITableViewDelegate, UITableViewDataSource {
     // MARK: - Cell Configuration
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let sectionType = SectionType(rawValue: indexPath.section)!
-
+        
+        // Check if we are in search mode
         if isSearching {
             let cell = tableView.dequeueReusableCell(withIdentifier: String(describing: MoviesTableViewCell.self), for: indexPath) as! MoviesTableViewCell
+            cell.selectionStyle = .none
             cell.configure(with: filteredMovies[indexPath.row])
             return cell
         }
-
-        // Handle `allMovies` section separately since it uses `MoviesData` directly
-        if sectionType == .allMovies {
-            let cell = tableView.dequeueReusableCell(withIdentifier: String(describing: MoviesTableViewCell.self), for: indexPath) as! MoviesTableViewCell
-            if let movie = viewModel.itemsInSection(.allMovies)[indexPath.row] as? MoviesData {
-                cell.configure(with: movie)
-            }
-            return cell
-        } else {
-            // Handle other sections (e.g., Genre, Year) as strings
-            let cell = tableView.dequeueReusableCell(withIdentifier: String(describing: AllMoviesTableViewCell.self), for: indexPath) as! AllMoviesTableViewCell
-            if let value = viewModel.itemsInSection(sectionType)[indexPath.row] as? String {
-                cell.titleLabel?.text = value
-            }
-            return cell
-        }
+        
+        // Determine the cell identifier based on the section type for non-search cases
+        let cellIdentifier = sectionType == .allMovies 
+                                            ? String(describing: MoviesTableViewCell.self)
+                                            : String(describing: AllMoviesTableViewCell.self)
+        let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath)
+        cell.selectionStyle = .none
+        
+        // Determine the data to be passed to the cell based on the section type
+        let data: Any = sectionType == .allMovies 
+                                        ? viewModel.itemsInSection(.allMovies)[indexPath.row]
+                                        : viewModel.itemsInSection(sectionType)[indexPath.row]
+        
+        (cell as? ConfigurableCell)?.configure(with: data)
+        
+        return cell
     }
 
     // MARK: - Cell Selection Handling

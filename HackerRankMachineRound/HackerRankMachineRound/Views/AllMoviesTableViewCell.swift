@@ -20,9 +20,11 @@ final class AllMoviesTableViewCell: UITableViewCell {
     }
 }
 
-
-extension AllMoviesTableViewCell {
-    func configure(with text: String) {
-        titleLabel.text = text
+// Protocol conformance method
+extension AllMoviesTableViewCell: ConfigurableCell {
+    func configure(with data: Any) {
+        if let title = data as? String {
+            self.titleLabel?.text = title
+        }
     }
 }
